@@ -62,4 +62,4 @@ git push -u origin main
   lo añadimos como siguiente paso.
 - Solo el dueño del servidor y el `OWNER_ID` (tú) pueden usar los comandos de
   `antinuke`, `whitelist`, `logs`, `lockdown` y `backup`. Los comandos de
-  moderación usan los permisos normales de Discord (kick_members, etc.).
+  moderación usan los permisos normales de Discord (kick_members, etc.).    
