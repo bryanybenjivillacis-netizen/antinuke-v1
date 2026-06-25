@@ -14,8 +14,14 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS guild_settings (
                 guild_id BIGINT PRIMARY KEY,
                 log_channel_id BIGINT,
-                lockdown BOOLEAN NOT NULL DEFAULT FALSE
+                lockdown BOOLEAN NOT NULL DEFAULT FALSE,
+                lockdown_snapshot JSONB
             );
+        """)
+        # Add lockdown_snapshot column if it doesn't exist (migration)
+        await conn.execute("""
+            ALTER TABLE guild_settings
+            ADD COLUMN IF NOT EXISTS lockdown_snapshot JSONB;
         """)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS antinuke_modules (
@@ -74,6 +80,33 @@ async def set_lockdown(guild_id: int, value: bool):
             """INSERT INTO guild_settings (guild_id, lockdown) VALUES ($1, $2)
                ON CONFLICT (guild_id) DO UPDATE SET lockdown = $2""",
             guild_id, value,
+        )
+
+
+async def save_lockdown_snapshot(guild_id: int, snapshot: dict):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO guild_settings (guild_id, lockdown_snapshot) VALUES ($1, $2)
+               ON CONFLICT (guild_id) DO UPDATE SET lockdown_snapshot = $2""",
+            guild_id, json.dumps(snapshot),
+        )
+
+
+async def get_lockdown_snapshot(guild_id: int):
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT lockdown_snapshot FROM guild_settings WHERE guild_id = $1", guild_id
+        )
+        if row and row["lockdown_snapshot"]:
+            return json.loads(row["lockdown_snapshot"])
+        return None
+
+
+async def clear_lockdown_snapshot(guild_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE guild_settings SET lockdown_snapshot = NULL WHERE guild_id = $1",
+            guild_id,
         )
 
 
@@ -147,6 +180,8 @@ async def save_backup(guild_id: int, data: dict):
 async def get_backup(guild_id: int):
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT data FROM backups WHERE guild_id = $1", guild_id
+            "SELECT data, created_at FROM backups WHERE guild_id = $1", guild_id
         )
-        return json.loads(row["data"]) if row else None
+        if not row:
+            return None, None
+        return json.loads(row["data"]), row["created_at"]
